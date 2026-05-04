@@ -60,6 +60,11 @@ on:
         required: true
         type: boolean
         default: false
+      add_zeromount:
+        description: "启用 ZeroMount 路径重定向"
+        required: false
+        type: boolean
+        default: false
       supp_op:
         description: "启用一加 8E 支持"
         required: false
@@ -106,6 +111,10 @@ on:
       cancel_susfs:
         required: false
         type: boolean
+      add_zeromount:
+        required: false
+        type: boolean
+        default: false
       supp_op:
         required: false
         type: boolean
@@ -171,6 +180,7 @@ jobs:
       use_rekernel: ${{ inputs.use_rekernel || false }}
       supp_op: ${{ inputs.supp_op || false }}
       enable_susfs: ${{ !inputs.cancel_susfs }}
+      add_zeromount: ${{ inputs.add_zeromount || false }}
       droidspaces: ${{ inputs.droidspaces || 'off' }}
 
   # 仅在直接触发时运行，从 main.yml 调用时跳过

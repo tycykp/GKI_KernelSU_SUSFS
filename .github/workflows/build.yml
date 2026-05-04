@@ -62,6 +62,10 @@ on:
         required: true
         type: boolean
         default: true
+      add_zeromount:
+        required: false
+        type: boolean
+        default: false
       supp_op:
         required: false
         type: boolean
@@ -100,6 +104,7 @@ jobs:
           echo "BBG 补丁      : ${{ inputs.use_bbg }}"
           echo "KPM 功能      : ${{ inputs.use_kpm }}"
           echo "Re-Kernel     : ${{ inputs.use_rekernel }}"
+          echo "ZeroMount     : ${{ inputs.add_zeromount }}"
           echo "Droidspaces   : ${{ inputs.droidspaces }}"
           echo "Stock Config  : 自动检测 config/stock_defconfig"
           echo "========================================"
@@ -738,6 +743,18 @@ jobs:
             patch -p1 --forward < "$ACTION_BUILD/patches/unicode_bypass_fix_6.1+.patch" || true
           fi
 
+      - name: 应用 ZeroMount 补丁
+        if: inputs.add_zeromount && inputs.enable_susfs
+        working-directory: ${{ env.KERNEL_ROOT }}/common
+        run: |
+          ZEROMOUNT_PATCH="$GITHUB_WORKSPACE/patches/zeromount/60_zeromount-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch"
+          if [ -f "$ZEROMOUNT_PATCH" ]; then
+            echo "应用 ZeroMount 补丁: $ZEROMOUNT_PATCH"
+            patch -p1 -F3 --no-backup-if-mismatch < "$ZEROMOUNT_PATCH"
+          else
+            echo "::warning::未找到 ZeroMount 补丁: $ZEROMOUNT_PATCH"
+          fi
+
       - name: 配置 ZRAM LZ4 补丁栈
         if: inputs.use_zram
         working-directory: ${{ env.KERNEL_ROOT }}/common
@@ -952,6 +969,11 @@ jobs:
           CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
           CONFIG_KSU_SUSFS_SUS_MAP=y
           EOF
+
+      - name: 添加 ZeroMount 配置
+        if: inputs.add_zeromount && inputs.enable_susfs
+        run: |
+          echo "CONFIG_ZEROMOUNT=y" >> "$DEFCONFIG"
 
       - name: 配置内核名称
         working-directory: ${{ env.KERNEL_ROOT }}

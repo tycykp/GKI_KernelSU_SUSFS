@@ -788,6 +788,60 @@ jobs:
                   sed -i '/#include <linux\/sched\/sysctl.h>/a #ifdef CONFIG_KSU_SUSFS_SUS_MAP\n#include <linux\/susfs_def.h>\n#endif' ./mm/memory.c
                 fi
               fi
+
+              # 修复最新 SukiSU builtin 缺少 6.6 SELinux hide 所需符号，导致 vmlinux 链接失败
+              if grep -q 'backup_sepolicy\|security_context_to_sid_with_policy' ./security/selinux/hooks.c ./security/selinux/selinuxfs.c; then
+                SELINUX_SERVICES="./security/selinux/ss/services.c"
+                if grep -q '^static int security_context_to_sid_with_policy' "$SELINUX_SERVICES"; then
+                  sed -i 's/^static int security_context_to_sid_with_policy/int security_context_to_sid_with_policy/' "$SELINUX_SERVICES"
+                fi
+                if grep -q '^static int security_sid_to_context_with_policy' "$SELINUX_SERVICES"; then
+                  sed -i 's/^static int security_sid_to_context_with_policy/int security_sid_to_context_with_policy/' "$SELINUX_SERVICES"
+                fi
+                if grep -q '^static void __nocfi security_compute_av_user_with_policy' "$SELINUX_SERVICES"; then
+                  sed -i 's/^static void __nocfi security_compute_av_user_with_policy/void __nocfi security_compute_av_user_with_policy/' "$SELINUX_SERVICES"
+                elif grep -q '^static void security_compute_av_user_with_policy' "$SELINUX_SERVICES"; then
+                  sed -i 's/^static void security_compute_av_user_with_policy/void security_compute_av_user_with_policy/' "$SELINUX_SERVICES"
+                fi
+                echo "已导出 Android 15 6.6 SELinux hide 所需 services.c 符号"
+              fi
+
+              KSU_RULES="./drivers/kernelsu/selinux/rules.c"
+              if [ "${{ inputs.ksu_variant }}" == "SukiSU" ] && [ -f "$KSU_RULES" ] && ! grep -q 'struct selinux_policy \*backup_sepolicy;' "$KSU_RULES"; then
+                sed -i '/^#define ALL NULL$/a \\nstruct selinux_policy *backup_sepolicy;' "$KSU_RULES"
+                awk '
+                  !inserted && /^[[:space:]]*pol = ksu_dup_sepolicy\(rcu_dereference_protected\(old_pol, lockdep_is_held\(&selinux_state.policy_mutex\)\)\);$/ {
+                    print "    if (!backup_sepolicy) {"
+                    print "        backup_sepolicy = ksu_dup_sepolicy(rcu_dereference_protected(old_pol, lockdep_is_held(&selinux_state.policy_mutex)));"
+                    print "        if (!backup_sepolicy) {"
+                    print "            pr_err(\"failed to create backup sepolicy\\n\");"
+                    print "        } else {"
+                    print "            backup_sepolicy->sidtab = kzalloc(sizeof(*backup_sepolicy->sidtab), GFP_KERNEL);"
+                    print "            if (!backup_sepolicy->sidtab) {"
+                    print "                pr_err(\"failed to alloc backup sidtab\\n\");"
+                    print "                ksu_destroy_sepolicy(backup_sepolicy);"
+                    print "                backup_sepolicy = NULL;"
+                    print "            } else {"
+                    print "                int ret = policydb_load_isids(&backup_sepolicy->policydb, backup_sepolicy->sidtab);"
+                    print "                if (ret) {"
+                    print "                    pr_err(\"failed to load isids for backup sepolicy: %d\\n\", ret);"
+                    print "                    kfree(backup_sepolicy->sidtab);"
+                    print "                    ksu_destroy_sepolicy(backup_sepolicy);"
+                    print "                    backup_sepolicy = NULL;"
+                    print "                } else {"
+                    print "                    pr_info(\"backup sepolicy success! latest_granting=%d\\n\", backup_sepolicy->latest_granting);"
+                    print "                }"
+                    print "            }"
+                    print "        }"
+                    print "    }"
+                    print ""
+                    inserted = 1
+                  }
+                  { print }
+                ' "$KSU_RULES" > "${KSU_RULES}.tmp"
+                mv "${KSU_RULES}.tmp" "$KSU_RULES"
+                echo "已补齐 SukiSU backup_sepolicy 定义和初始化"
+              fi
             fi
 
             # Android 16 - 6.12 修复

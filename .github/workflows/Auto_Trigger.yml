@@ -96,9 +96,9 @@ jobs:
       #         "inputs": {
       #           "make_release": "true",
       #           "kernelsu_variant": "SukiSU",
-      #           "version": "zako-kp",
+      #           "version": "@tycykp",
       #           "use_zram": "false",
-      #           "use_bbg": "true",
+      #           "use_bbg": "false",
       #           "use_kpm": "true",
       #           "get_manager": "true"
       #         }
